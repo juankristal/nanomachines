@@ -38,9 +38,11 @@ class Table(context: ActorContext[Table.Command], tableId: String)
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case LocateClient(id, client, replyTo, reception) =>
-        context.log.info2("Client {} sat at table {}", client, id)
-        if (clients.length == maxSpots)
+        if (clients.length == maxSpots) {
+          context.log.info("Table is full!")
           reception ! TableIsFull(id, replyTo)
+        }
+        context.log.info2("Client {} sat at table {}", client, id)
         clients ::= client
         reception ! ClientSat(id, context.self, replyTo)
         this
