@@ -8,14 +8,16 @@ object Table {
     Behaviors.setup(context => new Table(context, tableId))
 
   sealed trait Command
-  sealed trait ClientCommand
+  trait ClientCommand
 
   final case class GetClients(requestId: Long, replyTo: ActorRef[ClientCommand]) extends Command
   final case class RespondClients(requestId: Long, value: List[String]) extends ClientCommand
 
-  final case class SitClient(requestId: Long, client: String, replyTo: ActorRef[ClientCommand])
+  final case class LocateClient(requestId: Long,
+                                client: String,
+                                replyTo: ActorRef[Reception.ClientCommand],
+                                replyToReception: ActorRef[Reception.Command])
     extends Command
-  final case class ClientSat(requestId: Long) extends ClientCommand
   final case class ClientNotFound(requestId: Long) extends Reception.ClientCommand
 
   final case class StandClient(requestId: Long, value: String, replyTo: ActorRef[Reception.ClientCommand])
@@ -26,17 +28,21 @@ object Table {
 class Table(context: ActorContext[Table.Command], tableId: String)
   extends AbstractBehavior[Table.Command](context) {
   import Table._
+  import Reception.{TableIsFull, ClientSat}
 
   var clients: List[String] = List[String]()
+  val maxSpots = 5
 
   context.log.info("Table actor {} started", tableId)
 
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
-      case SitClient(id, client, replyTo) =>
+      case LocateClient(id, client, replyTo, reception) =>
         context.log.info2("Client {} sat at table {}", client, id)
+        if (clients.length == maxSpots)
+          reception ! TableIsFull(id, replyTo)
         clients ::= client
-        replyTo ! ClientSat(id)
+        reception ! ClientSat(id, context.self, replyTo)
         this
 
       case StandClient(id, client, replyTo) =>

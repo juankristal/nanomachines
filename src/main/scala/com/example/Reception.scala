@@ -16,10 +16,17 @@ object Reception {
                               currentTable: ActorRef[Table.Command],
                               newTable: String,
                               replyTo: ActorRef[ClientCommand]) extends Command
-  final case class SitClient(requestId: Long, client: String, mesa: String, replyTo: ActorRef[ClientCommand])
+  final case class SitClient(requestId: Long,
+                             client: String,
+                             mesa: String,
+                             replyTo: ActorRef[ClientCommand])
     extends Command
   final case class TableTerminated(table: ActorRef[Table.Command], tableId: String) extends Command
   final case class TableRegistered(table: ActorRef[Table.Command]) extends ClientCommand
+  final case class TableFilled(table: ActorRef[Table.Command]) extends ClientCommand
+  final case class TableIsFull(requestId: Long, replyTo: ActorRef[ClientCommand]) extends Command
+  final case class UnavailableTable(requestId: Long) extends ClientCommand
+  final case class ClientSat(requestId: Long, table: ActorRef[Table.Command], replyTo: ActorRef[ClientCommand]) extends Command
 }
 
 class Reception(context: ActorContext[Reception.Command])
@@ -35,20 +42,26 @@ class Reception(context: ActorContext[Reception.Command])
         case SitClient(id, client, tableName, replyTo) =>
           tables.get(tableName) match {
             case Some(tableActor) =>
-              replyTo ! TableRegistered(tableActor)
+              tableActor ! Table.LocateClient(id, client, replyTo, context.self)
               this
             case None =>
               context.log.info(s"Table created with name $tableName")
               val tableActor = context.spawn(Table(tableName), s"Mesa $tableName")
               context.watchWith(tableActor, TableTerminated(tableActor, tableName))
               tables += tableActor
-              replyTo ! TableRegistered(tableActor)
+              tableActor ! Table.LocateClient(id, client, replyTo, context.self)
               this
           }
         case MoveClient(id, client, currentTable, newTable, replyTo) =>
             currentTable ! StandClient(id, client, replyTo)
             context.self ! SitClient(id, client, newTable, replyTo)
             this
+        case ClientSat(id, table, replyTo) =>
+          replyTo ! TableRegistered(table)
+          this
+        case TableIsFull(id, replyTo) =>
+          replyTo ! UnavailableTable(id)
+          this
         case TableTerminated(_, tableName) =>
           context.log.info(s"Table died $tableName")
           tables -= tableName
