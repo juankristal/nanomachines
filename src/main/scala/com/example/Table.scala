@@ -18,17 +18,19 @@ object Table {
                                 replyTo: ActorRef[Reception.ClientCommand],
                                 replyToReception: ActorRef[Reception.Command])
     extends Command
-  final case class ClientNotFound(requestId: Long) extends Reception.ClientCommand
 
-  final case class StandClient(requestId: Long, value: String, replyTo: ActorRef[Reception.ClientCommand])
+  final case class RemoveClient(requestId: Long,
+                                client: String,
+                                newTable: String,
+                                replyTo: ActorRef[Reception.ClientCommand],
+                                replyToReception: ActorRef[Reception.Command])
     extends Command
-  final case class ClientStood(requestId: Long) extends Reception.ClientCommand
 }
 
 class Table(context: ActorContext[Table.Command], tableId: String)
   extends AbstractBehavior[Table.Command](context) {
   import Table._
-  import Reception.{TableIsFull, ClientSat}
+  import Reception.{TableIsFull, ClientSat, ClientStood, ClientNotFound}
 
   var clients: List[String] = List[String]()
   val maxSpots = 5
@@ -47,14 +49,15 @@ class Table(context: ActorContext[Table.Command], tableId: String)
         reception ! ClientSat(id, context.self, replyTo)
         this
 
-      case StandClient(id, client, replyTo) =>
-        context.log.info2("Client {} left table {}", client, id)
+      case RemoveClient(id, client, newTable, replyTo, reception) =>
         clients.filter(c => c == client).lastOption match {
           case Some(filteredClient) =>
+            context.log.info(s"Clients ${client} left the table.")
             clients = clients.filter(c => c != filteredClient)
-            replyTo ! ClientStood(id)
+            reception ! ClientStood(id, client, newTable, replyTo)
           case None =>
-            replyTo ! ClientNotFound(id)
+            context.log.info(s"Clients ${client} is not sat in this table.")
+            reception ! ClientNotFound(id, replyTo)
         }
         this
 
