@@ -16,11 +16,11 @@ object Table {
   final case class SitClient(requestId: Long, client: String, replyTo: ActorRef[ClientCommand])
     extends Command
   final case class ClientSat(requestId: Long) extends ClientCommand
-  final case class ClientNotFound(requestId: Long) extends ClientCommand
+  final case class ClientNotFound(requestId: Long) extends Reception.ClientCommand
 
-  final case class StandClient(requestId: Long, value: String, replyTo: ActorRef[ClientCommand])
+  final case class StandClient(requestId: Long, value: String, replyTo: ActorRef[Reception.ClientCommand])
     extends Command
-  final case class ClientStood(requestId: Long) extends ClientCommand
+  final case class ClientStood(requestId: Long) extends Reception.ClientCommand
 }
 
 class Table(context: ActorContext[Table.Command], tableId: String)
