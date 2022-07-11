@@ -8,7 +8,7 @@ import com.example.Customer.{EatCommand, EatConfirmed, ProcessCommand}
 import com.example.part_3.Reception
 import com.example.part_3.Reception.{MoveClient, SitClient, TableRegistered, UnavailableTable}
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, TimeoutException}
 import scala.concurrent.duration.DurationInt
 import scala.io.StdIn
 import scala.language.postfixOps
@@ -41,7 +41,7 @@ class Customer(context: ActorContext[Reception.ClientCommand],
         this.processCommand(requestId, msg, table)
         this
       case UnavailableTable(id) =>
-        context.log.info("Consola recibio mensaje\n")
+        context.log.info("Che, la mesa no esta disponible\n")
         this
       case TableRegistered(table) =>
         context.log.info(s"Me asigaron a la mesa ${table}\n")
@@ -68,7 +68,6 @@ class Customer(context: ActorContext[Reception.ClientCommand],
 }
 
 object Main extends App {
-  implicit val timeout: Timeout = 5.seconds
   implicit val reception: ActorSystem[Reception.Command] = ActorSystem(Reception(), "Reception")
   var customers: Map[String, ActorSystem[Reception.ClientCommand]] =
     Map.empty[String, ActorSystem[Reception.ClientCommand]]
@@ -79,12 +78,13 @@ object Main extends App {
       requestNumber += 1
       msg.split(" ") match {
         case Array("q") => break
-        case Array(name, command, table) =>
+        case Array(name, command, param) =>
           customers.get(name) match {
             case Some(customer) =>
               command match {
                 case "eat" =>
                   println("Esperamos a que coma el cliente...")
+                  implicit val timeout: Timeout = param.toInt.seconds
                   val future = customer ? ((ref: ActorRef[Reception.ClientCommand]) => EatCommand(requestNumber, ref))
                   try {
                     Await.result(future, timeout.duration) match {
@@ -92,16 +92,18 @@ object Main extends App {
                         println(s"${id}: El cliente finalizo de comer a tiempo")
                     }
                   } catch {
-                    case e: Throwable => println("El cliente no comio a tiempo!")
+                    case e: TimeoutException => println("El cliente no comio a tiempo!")
                   }
                 case _ =>
-                  customer ! ProcessCommand(requestNumber, command, table)
+                  customer ! ProcessCommand(requestNumber, command, param)
               }
             case None =>
               val customer: ActorSystem[Reception.ClientCommand] = ActorSystem(Customer(name, reception), "Console")
               customers += name -> customer
-              customer ! ProcessCommand(requestNumber, command, table)
+              customer ! ProcessCommand(requestNumber, command, param)
           }
+        case _ =>
+          println("Unkown Command")
       }
     }
   }
