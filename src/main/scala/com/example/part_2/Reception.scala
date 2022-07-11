@@ -1,4 +1,4 @@
-package com.example
+package com.example.part_2
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}

@@ -1,7 +1,7 @@
-package com.example
+package com.example.part_2
 
-import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors, LoggerOps}
 import akka.actor.typed._
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors, LoggerOps}
 
 object Table {
   def apply(tableId: String): Behavior[Command] =
@@ -29,8 +29,8 @@ object Table {
 
 class Table(context: ActorContext[Table.Command], tableId: String)
   extends AbstractBehavior[Table.Command](context) {
+  import Reception.{ClientNotFound, ClientSat, ClientStood, TableIsFull}
   import Table._
-  import Reception.{TableIsFull, ClientSat, ClientStood, ClientNotFound}
 
   var clients: List[String] = List[String]()
   val maxSpots = 5
