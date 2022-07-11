@@ -1,12 +1,14 @@
 package com.example
 
+import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.util.Timeout
-import com.example.Customer.ProcessCommand
+import com.example.Customer.{EatCommand, EatConfirmed, ProcessCommand}
 import com.example.part_3.Reception
 import com.example.part_3.Reception.{MoveClient, SitClient, TableRegistered, UnavailableTable}
 
+import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 import scala.io.StdIn
 import scala.language.postfixOps
@@ -15,6 +17,8 @@ import scala.util.control.Breaks.{break, breakable}
 object Customer {
 
   final case class ProcessCommand(requestId: Int, msg: String, table: String) extends Reception.ClientCommand
+  final case class EatCommand(requestId: Int, replyTo: ActorRef[Reception.ClientCommand]) extends Reception.ClientCommand
+  final case class EatConfirmed(requestId: Int) extends Reception.ClientCommand
 
   def apply(name: String, reception: ActorSystem[Reception.Command]): Behavior[Reception.ClientCommand] =
     Behaviors.setup(context => new Customer(context, name, reception))
@@ -28,6 +32,11 @@ class Customer(context: ActorContext[Reception.ClientCommand],
 
   override def onMessage(msg: Reception.ClientCommand): Behavior[Reception.ClientCommand] = {
     msg match {
+      case EatCommand(requestId, replyTo) =>
+        context.log.info("Estoy comiendo y voy a tardar un rato...")
+        Thread.sleep(4000)
+        replyTo ! EatConfirmed(requestId)
+        this
       case ProcessCommand(requestId, msg, table) =>
         this.processCommand(requestId, msg, table)
         this
@@ -53,12 +62,13 @@ class Customer(context: ActorContext[Reception.ClientCommand],
             context.log.info("No estoy asignado a una mesa")
         }
       case _ =>
+        context.log.info("No entiendo este comando")
     }
   }
 }
 
 object Main extends App {
-  implicit val timeout: Timeout = Timeout(5.seconds)
+  implicit val timeout: Timeout = 5.seconds
   implicit val reception: ActorSystem[Reception.Command] = ActorSystem(Reception(), "Reception")
   var customers: Map[String, ActorSystem[Reception.ClientCommand]] =
     Map.empty[String, ActorSystem[Reception.ClientCommand]]
@@ -72,12 +82,21 @@ object Main extends App {
         case Array(name, command, table) =>
           customers.get(name) match {
             case Some(customer) =>
-              customer ! ProcessCommand(requestNumber, command, table)
-              //val future = customer ? ((ref: ActorRef[Reception.ClientCommand]) => ProcessCommand(requestNumber, command, table))
-              //Await.result(future, timeout.duration) match {
-              //  case ProcessCommand(_, _, _) =>
-              //    println("Garantizamos que se espera la resolucion del futuro!")
-              //}
+              command match {
+                case "eat" =>
+                  println("Esperamos a que coma el cliente...")
+                  val future = customer ? ((ref: ActorRef[Reception.ClientCommand]) => EatCommand(requestNumber, ref))
+                  try {
+                    Await.result(future, timeout.duration) match {
+                      case EatConfirmed(id) =>
+                        println(s"${id}: El cliente finalizo de comer a tiempo")
+                    }
+                  } catch {
+                    case e: Throwable => println("El cliente no comio a tiempo!")
+                  }
+                case _ =>
+                  customer ! ProcessCommand(requestNumber, command, table)
+              }
             case None =>
               val customer: ActorSystem[Reception.ClientCommand] = ActorSystem(Customer(name, reception), "Console")
               customers += name -> customer
